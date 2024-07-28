@@ -1,10 +1,12 @@
 from flask import Flask, request, jsonify
+#from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 import os
-import base64
 from models import db, PDF, User
+import base64
 
 app = Flask(__name__)
+#CORS(app)
 
 # Database configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///pdfs.db'
@@ -25,15 +27,8 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# Define the UserAnswer model
-class UserAnswer(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.String(255), nullable=False)  # Use username or a unique identifier
-    pdf_id = db.Column(db.Integer, db.ForeignKey('pdf.id'), nullable=False)
-    answer = db.Column(db.String(255), nullable=False)
-
-    pdf = db.relationship('PDF', backref=db.backref('user_answers', lazy=True))
-
+############################################################################################################
+#upload
 @app.route('/api/upload', methods=['POST'])
 def upload_pdfs():
     if 'files[]' not in request.files:
@@ -75,7 +70,7 @@ def upload_pdfs():
         # Update User's PDF list
         user = User.query.get('testuser')
         if user:
-            user.pdf_ids = list(set(user.pdf_ids or [] + pdf_ids))
+            user.pdf_ids.extend(pdf_ids)
             db.session.commit()
         else:
             user = User(username='testuser', pdf_ids=pdf_ids)
@@ -86,16 +81,20 @@ def upload_pdfs():
     except Exception as e:
         return jsonify({"message": f"Error uploading files: {str(e)}"}), 500
 
+#cases puilll
 @app.route('/api/cases', methods=['GET'])
 def list_cases():
     try:
         # Query distinct case fields
         cases = db.session.query(PDF.case_field).distinct().all()
         case_list = [{'case': case[0]} for case in cases if case[0] is not None]
+        #print(cases)
         return jsonify(case_list), 200
     except Exception as e:
         return jsonify({"message": f"Error retrieving cases: {str(e)}"}), 500
-
+    
+##############################################################################################
+#pdfs (ALL) pull
 @app.route('/api/pdfs', methods=['GET'])
 def get_pdfs_by_case():
     case_id = request.args.get('case')  # Get the case ID from query parameters
@@ -119,6 +118,7 @@ def get_pdfs_by_case():
     except Exception as e:
         return jsonify({"message": f"Error retrieving PDFs: {str(e)}"}), 500
 
+#specific pdf pull
 @app.route('/api/pdfs/<int:pdf_id>', methods=['GET'])
 def get_pdf(pdf_id):
     try:
@@ -137,65 +137,29 @@ def get_pdf(pdf_id):
 
 @app.route('/api/pdfs/<int:pdf_id>/answer', methods=['POST'])
 def submit_answer(pdf_id):
-    user_id = 'testuser'  # Hardcoded for testing purposes
-    user_answer = request.json.get('answer')
-
-    if user_answer is None:
-        return jsonify({"message": "No answer provided"}), 400
-
     try:
         pdf = PDF.query.get_or_404(pdf_id)
+        user_answer = request.json.get('answer')
+
+        if user_answer is None:
+            return jsonify({"message": "No answer provided"}), 400
+
         is_correct = user_answer == pdf.answer
 
-        # Save the user's answer
-        existing_answer = UserAnswer.query.filter_by(user_id=user_id, pdf_id=pdf_id).first()
-        if existing_answer:
-            existing_answer.answer = user_answer
-        else:
-            new_answer = UserAnswer(user_id=user_id, pdf_id=pdf_id, answer=user_answer)
-            db.session.add(new_answer)
-
-        db.session.commit()
-
+        # Here you could store the user's answer if needed
+        # For now, just return whether the answer is correct or not
+        print(pdf.answer)
         return jsonify({"is_correct": is_correct, "correct_answer": pdf.answer}), 200
     except Exception as e:
         return jsonify({"message": f"Error submitting answer: {str(e)}"}), 500
 
-@app.route('/api/pdfs/<int:pdf_id>/answers', methods=['GET'])
-def get_user_answers(pdf_id):
-    user_id = 'testuser'  # Hardcoded for testing purposes
-    try:
-        answers = UserAnswer.query.filter_by(pdf_id=pdf_id, user_id=user_id).all()
-        answers_list = [{"user_id": answer.user_id, "answer": answer.answer} for answer in answers]
-        return jsonify(answers_list), 200
-    except Exception as e:
-        return jsonify({"message": f"Error retrieving answers: {str(e)}"}), 500
-
+##############################################################################################################################
+#foir testing
 @app.route('/api/ping', methods=['GET'])
 def ping():
     return jsonify({"message": "Pong"})
 
-@app.route('/api/wipe', methods=['DELETE'])
-def wipe_database():
-    # Delete all records from the database
-    try:
-        PDF.query.delete()  # Delete all records from the PDF table
-        UserAnswer.query.delete()  # Delete all records from the UserAnswer table
-        db.session.commit()
-    except Exception as e:
-        return jsonify({"message": f"Error wiping database: {str(e)}"}), 500
-
-    # Remove all files from the upload directory
-    try:
-        upload_folder = app.config['UPLOAD_FOLDER']
-        for filename in os.listdir(upload_folder):
-            file_path = os.path.join(upload_folder, filename)
-            if os.path.isfile(file_path):
-                os.remove(file_path)
-    except Exception as e:
-        return jsonify({"message": f"Error deleting files: {str(e)}"}), 500
-
-    return jsonify({"message": "Database and files wiped successfully"}), 200
+##############################################################################################################################
 
 if __name__ == '__main__':
     app.run(debug=True)

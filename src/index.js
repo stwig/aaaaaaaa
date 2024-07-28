@@ -2,7 +2,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AppRoutes from './routes/Routes';
-import App from './App';
 import './index.css';
 
 // Create a root element and render the AppRoutes
